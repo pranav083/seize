@@ -1,5 +1,5 @@
 use crate::tls::Thread;
-use crate::{raw, LocalGuard, OwnedGuard};
+use crate::{membarrier, raw, LocalGuard, OwnedGuard};
 
 use std::cell::UnsafeCell;
 use std::fmt;
@@ -21,19 +21,22 @@ unsafe impl Send for Collector {}
 unsafe impl Sync for Collector {}
 
 impl Collector {
-    const DEFAULT_RETIRE_TICK: usize = 120;
+    const DEFAULT_BATCH_SIZE: usize = 64;
     const DEFAULT_EPOCH_TICK: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(110) };
 
     /// Creates a new collector.
     pub fn new() -> Self {
         static ID: AtomicUsize = AtomicUsize::new(0);
 
+        membarrier::detect();
         let cpus = std::thread::available_parallelism()
             .map(Into::into)
             .unwrap_or(1);
 
+        let batch_size = cpus.min(Self::DEFAULT_BATCH_SIZE);
+
         Self {
-            raw: raw::Collector::new(cpus, Self::DEFAULT_EPOCH_TICK, Self::DEFAULT_RETIRE_TICK),
+            raw: raw::Collector::new(cpus, Self::DEFAULT_EPOCH_TICK, batch_size),
             id: ID.fetch_add(1, Ordering::Relaxed),
         }
     }
@@ -76,11 +79,9 @@ impl Collector {
     /// Note that batch sizes should generally be larger
     /// than the number of threads accessing objects.
     ///
-    /// The default batch size is `120`. Tests have shown that
-    /// this makes a good tradeoff between throughput and memory
-    /// efficiency.
-    pub fn batch_size(mut self, n: usize) -> Self {
-        self.raw.batch_size = n;
+    /// The default batch size is `32`.
+    pub fn batch_size(mut self, batch_size: usize) -> Self {
+        self.raw.batch_size = batch_size;
         self
     }
 
