@@ -12,6 +12,7 @@ rust-version = "1.72.0"
 
 [dependencies]
 libc = { version = "0.2", optional = true }
+crossbeam = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_System_Threading"], optional = true }
@@ -36,4 +37,12 @@ harness = false
 
 [[bench]]
 name = "single_thread"
+harness = false
+
+[[bench]]
+name = "lockfree_list_test"
+harness = false
+
+[[bench]]
+name = "lockfree_hash_test"
 harness = false
