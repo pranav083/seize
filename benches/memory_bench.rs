@@ -1,64 +1,404 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use sysinfo::{System, SystemExt};
+use seize::Collector;
 use seize::LockFreeQueue;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use crossbeam_epoch as epoch;
+use haphazard::HazardPointer;
+use std::sync::Arc;
+use std::hint::black_box;
+use std::sync::atomic::AtomicPtr;
+use seize::structures::atomic_queue::AtomicQueue;
+use sysinfo::{System, SystemExt};
+use std::fs::File;
+use std::io::{Write, BufWriter};
 
-fn memory_usage_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("memory_usage");
-    group.measurement_time(Duration::from_secs(60));
-    group.sample_size(10);
+fn benchmark_lockfree_queue(c: &mut Criterion) {
+    let mut group = c.benchmark_group("lockfree_queue_memory");
+    let mut sys = System::new_all();
 
-    let queue = Arc::new(LockFreeQueue::new());
-    let memory_usage = Arc::new(Mutex::new(Vec::new()));
-    let mut run_id = 0;
+    // Open a CSV file for logging memory usage
+    let file = File::create("lockfree_queue_memory_usage.csv").expect("Unable to create file");
+    let mut writer = BufWriter::new(file);
 
-    group.bench_function("memory_tracking", |b| {
-        let queue = queue.clone();
-        let memory_usage = memory_usage.clone();
+    // Write CSV header
+    writeln!(
+        writer,
+        "Benchmark,Reclamation Scheme,Operation,Memory Before (KB),Memory After (KB),Memory Free Change (KB)"
+    )
+    .expect("Unable to write to file");
 
-        b.iter_custom(|iters| {
-            run_id += 1;
-            let start = Instant::now();
+    // Reference Counting
+    group.bench_function("lock_free_queue_enqueue_ref_counting", |b| {
+        let queue = Arc::new(LockFreeQueue::new());
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
 
-            let tracking_handle = thread::spawn({
-                let memory_usage = memory_usage.clone();
-                let mut sys = System::new_all();
-                move || {
-                    let interval = Duration::from_millis(100);
-                    while start.elapsed() < Duration::from_secs(5) {
-                        sys.refresh_memory();
-                        let mut usage = memory_usage.lock().unwrap();
-                        usage.push((
-                            run_id,
-                            start.elapsed().as_secs_f64(),
-                            sys.available_memory(),
-                        ));
-                        thread::sleep(interval);
-                    }
-                }
-            });
-
-            for _ in 0..(iters / 10) {
-                queue.enqueue(1);
-                queue.dequeue();
-            }
-
-            tracking_handle.join().unwrap();
-            start.elapsed()
+            writeln!(
+                writer,
+                "lockfree_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
         });
+    });
 
-        let memory_usage = memory_usage.lock().unwrap();
-        let data: String = memory_usage
-            .iter()
-            .map(|(run, time, memory)| format!("{},{:.2},{}\n", run, time, memory))
-            .collect();
-        std::fs::write("memory_usage.csv", data).unwrap();
+    group.bench_function("lock_free_queue_dequeue_ref_counting", |b| {
+        let queue = Arc::new(LockFreeQueue::new());
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Seize
+    group.bench_function("lock_free_queue_enqueue_seize", |b| {
+        let collector = Collector::new();
+        let queue = LockFreeQueue::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = collector.enter();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,seize,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("lock_free_queue_dequeue_seize", |b| {
+        let collector = Collector::new();
+        let queue = LockFreeQueue::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = collector.enter();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,seize,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Crossbeam Epoch
+    group.bench_function("lock_free_queue_enqueue_crossbeam", |b| {
+        let queue = LockFreeQueue::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = epoch::pin();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,crossbeam,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("lock_free_queue_dequeue_crossbeam", |b| {
+        let queue = LockFreeQueue::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = epoch::pin();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,crossbeam,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Hazard Pointer
+    group.bench_function("lock_free_queue_enqueue_hazard_pointer", |b| {
+        let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
+        let queue = LockFreeQueue::new();
+        let mut hazard_pointer = HazardPointer::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            unsafe {
+                let _protected = hazard_pointer.protect(&atomic_ptr);
+                black_box(queue.enqueue(1));
+            }
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,hazard_pointer,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("lock_free_queue_dequeue_hazard_pointer", |b| {
+        let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
+        let queue = LockFreeQueue::new();
+        let mut hazard_pointer = HazardPointer::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            unsafe {
+                let _protected = hazard_pointer.protect(&atomic_ptr);
+                black_box(queue.dequeue());
+            }
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "lockfree_queue,hazard_pointer,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
     });
 
     group.finish();
+    writer.flush().expect("Failed to flush memory usage data");
 }
 
-criterion_group!(benches, memory_usage_benchmark);
+fn benchmark_atomic_queue(c: &mut Criterion) {
+    let mut group = c.benchmark_group("atomic_queue_memory");
+    let mut sys = System::new_all();
+
+    let file = File::create("atomic_queue_memory_usage.csv").expect("Unable to create file");
+    let mut writer = BufWriter::new(file);
+
+    writeln!(
+        writer,
+        "Benchmark,Reclamation Scheme,Operation,Memory Before (KB),Memory After (KB),Memory Free Change (KB)"
+    )
+    .expect("Unable to write to file");
+
+    // Reference Counting
+    group.bench_function("atomic_queue_enqueue_ref_counting", |b| {
+        let queue = Arc::new(AtomicQueue::new());
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("atomic_queue_dequeue_ref_counting", |b| {
+        let queue = Arc::new(AtomicQueue::new());
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Seize
+    group.bench_function("atomic_queue_enqueue_seize", |b| {
+        let collector = Collector::new();
+        let queue = AtomicQueue::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = collector.enter();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,seize,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("atomic_queue_dequeue_seize", |b| {
+        let collector = Collector::new();
+        let queue = AtomicQueue::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = collector.enter();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,seize,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Crossbeam
+    group.bench_function("atomic_queue_enqueue_crossbeam", |b| {
+        let queue = AtomicQueue::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = epoch::pin();
+            black_box(queue.enqueue(1));
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,crossbeam,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("atomic_queue_dequeue_crossbeam", |b| {
+        let queue = AtomicQueue::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            let _guard = epoch::pin();
+            black_box(queue.dequeue());
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+
+            writeln!(
+                writer,
+                "atomic_queue,crossbeam,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    // Hazard Pointer
+    group.bench_function("atomic_queue_enqueue_hazard_pointers", |b| {
+        let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
+        let queue = AtomicQueue::new();
+        let mut hazard_pointer = HazardPointer::new();
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            unsafe {
+                let _protected = hazard_pointer.protect(&atomic_ptr);
+                black_box(queue.enqueue(1));
+            }
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+    
+            writeln!(
+                writer,
+                "atomic_queue,hazard_pointer,enqueue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+
+    group.bench_function("atomic_queue_dequeue_hazard_pointers", |b| {
+        let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
+        let queue = AtomicQueue::new();
+        let mut hazard_pointer = HazardPointer::new();
+        queue.enqueue(1);
+        b.iter(|| {
+            sys.refresh_memory();
+            let memory_before = sys.available_memory();
+            unsafe {
+                let _protected = hazard_pointer.protect(&atomic_ptr);
+                black_box(queue.dequeue());
+            }
+            sys.refresh_memory();
+            let memory_after = sys.available_memory();
+            let memory_change = memory_after as i64 - memory_before as i64;
+    
+            writeln!(
+                writer,
+                "atomic_queue,hazard_pointer,dequeue,{} KB,{} KB,{} KB",
+                memory_before, memory_after, memory_change
+            )
+            .expect("Unable to write to file");
+        });
+    });
+    
+
+    group.finish();
+    writer.flush().expect("Failed to flush memory usage data");
+}
+
+criterion_group!(benches, benchmark_lockfree_queue, benchmark_atomic_queue);
 criterion_main!(benches);

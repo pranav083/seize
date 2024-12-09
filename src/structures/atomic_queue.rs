@@ -51,21 +51,20 @@ impl<T> AtomicQueue<T> {
             let head = self.head.load(Ordering::Acquire);
             let tail = self.tail.load(Ordering::Acquire);
             let head_next = unsafe { (*head).next.load(Ordering::Acquire) };
-
+    
             if head == tail {
                 if head_next.is_null() {
                     return None;
                 }
-                self.tail.compare_exchange(tail, head_next, Ordering::AcqRel, Ordering::Acquire).ok();
+                self.tail.compare_exchange(tail, head_next, Ordering::Release, Ordering::Relaxed).ok();
             } else if !head_next.is_null() {
-                let next = unsafe { &mut *head_next };
-                let value = next.value.take();
-                if self.head.compare_exchange(head, head_next, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                let value = unsafe { (*head_next).value.take() };
+                if self.head.compare_exchange(head, head_next, Ordering::Release, Ordering::Relaxed).is_ok() {
                     unsafe { drop(Box::from_raw(head)) };
                     return value;
                 }
             }
-        }
+        }    
     }
 }
 

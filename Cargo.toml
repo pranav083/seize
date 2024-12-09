@@ -43,9 +43,13 @@ name = "single_thread"
 harness = false
 
 [[bench]]
-name = "structures_bench"
+name = "normal_bench"
 harness = false
 
 [[bench]]
 name = "memory_bench"
+harness = false
+
+[[bench]]
+name = "threads_bench"
 harness = false
