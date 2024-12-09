@@ -682,14 +682,14 @@ impl<T> Drop for Stack<T> {
     }
 }
 
-#[cfg(any(miri, seize_asan))]
+#[cfg(miri)]
 mod cfg {
     pub const THREADS: usize = 4;
     pub const ITEMS: usize = 100;
     pub const ITER: usize = 4;
 }
 
-#[cfg(not(any(miri, seize_asan)))]
+#[cfg(not(miri))]
 mod cfg {
     pub const THREADS: usize = 32;
     pub const ITEMS: usize = 10_000;

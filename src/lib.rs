@@ -5,7 +5,6 @@
 mod collector;
 mod deferred;
 mod guard;
-mod membarrier;
 mod raw;
 mod tls;
 mod utils;
@@ -13,6 +12,10 @@ mod utils;
 pub mod guide;
 pub mod reclaim;
 
+pub mod structures;
+
 pub use collector::{AsLink, Collector, Link, Linked};
 pub use deferred::Deferred;
 pub use guard::{unprotected, Guard, LocalGuard, OwnedGuard, UnprotectedGuard};
+
+pub use structures::lock_free_queue::LockFreeQueue;

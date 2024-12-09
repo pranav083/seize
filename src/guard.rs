@@ -3,7 +3,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::raw::{self, Reservation};
+use crate::raw::Reservation;
 use crate::tls::Thread;
 use crate::{AsLink, Collector, Link};
 
@@ -37,9 +37,6 @@ pub trait Guard {
     /// can be reclaimed while this guard is active, but calling `flush`
     /// may allow memory to be reclaimed more quickly after the guard is
     /// dropped.
-    ///
-    /// Note that the batch must contain at least as many objects as the
-    /// number of currently active threads for a flush to be performed.
     ///
     /// See [`Collector::batch_size`] for details about batching.
     fn flush(&self);
@@ -150,9 +147,13 @@ impl LocalGuard<'_> {
 impl Guard for LocalGuard<'_> {
     /// Protects the load of an atomic pointer.
     #[inline]
-    fn protect<T: AsLink>(&self, ptr: &AtomicPtr<T>, _: Ordering) -> *mut T {
+    fn protect<T: AsLink>(&self, ptr: &AtomicPtr<T>, ordering: Ordering) -> *mut T {
         // Safety: `self.reservation` is owned by the current thread.
-        unsafe { self.collector.raw.protect_local(ptr, &*self.reservation) }
+        unsafe {
+            self.collector
+                .raw
+                .protect_local(ptr, ordering, &*self.reservation)
+        }
     }
 
     /// Retires a value, running `reclaim` when no threads hold a reference to
@@ -282,10 +283,10 @@ impl OwnedGuard<'_> {
 impl Guard for OwnedGuard<'_> {
     /// Protects the load of an atomic pointer.
     #[inline]
-    fn protect<T: AsLink>(&self, ptr: &AtomicPtr<T>, _: Ordering) -> *mut T {
+    fn protect<T: AsLink>(&self, ptr: &AtomicPtr<T>, ordering: Ordering) -> *mut T {
         // Safety: `self.reservation` is owned by the current thread.
         let reservation = unsafe { &*self.reservation };
-        self.collector.raw.protect(ptr, reservation)
+        self.collector.raw.protect(ptr, ordering, reservation)
     }
 
     /// Retires a value, running `reclaim` when no threads hold a reference to
@@ -305,9 +306,12 @@ impl Guard for OwnedGuard<'_> {
     /// Refreshes the guard.
     #[inline]
     fn refresh(&mut self) {
-        // Safety: `self.reservation` is owned by the current thread.
-        let reservation = unsafe { &*self.reservation };
-        unsafe { self.collector.raw.refresh(reservation) }
+        // Safety: We have `&mut self` and ownership of the thread.
+        unsafe {
+            self.collector
+                .raw
+                .refresh(self.collector.raw.reservation(self.thread))
+        }
     }
 
     /// Flush any retired values in the local batch.
@@ -340,14 +344,12 @@ impl Guard for OwnedGuard<'_> {
     }
 
     #[inline]
-    fn link(&self, _collector: &Collector) -> Link {
-        // Avoid going through shared thread local storage.
-        let node = raw::Node {
-            birth_epoch: self.collector.raw.birth_epoch(),
-        };
+    fn link(&self, collector: &Collector) -> Link {
+        // Safety: `self.reservation` is owned by the current thread.
+        let reservation = unsafe { &*self.reservation };
 
         Link {
-            node: UnsafeCell::new(node),
+            node: UnsafeCell::new(collector.raw.node(reservation)),
         }
     }
 }
