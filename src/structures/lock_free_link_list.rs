@@ -1,231 +1,234 @@
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering, fence};
-use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared, Guard};
 
-/// Node structure for the linked list
 pub struct Node<T> {
     value: T,
-    next: AtomicPtr<Node<T>>,
-    marked: AtomicBool,      // For marking nodes as logically deleted
-    version: AtomicUsize,    // For ABA prevention
-}
-
-/// Thread-safe lock-free linked list implementation.
-/// # Safety
-/// All operations are thread-safe and lock-free.
-/// However, the caller must ensure that the list is not dropped while other threads are accessing it.
-pub struct LockFreeList<T> {
-    head: AtomicPtr<Node<T>>,
+    next: Atomic<Node<T>>,
+    marked: AtomicBool,
+    version: AtomicUsize,
 }
 
 impl<T> Node<T>
 where
     T: Clone,
 {
-    /// Creates a new node with the given value.
-    fn new(value: &T) -> Option<*mut Self> {
-        let node = Box::new(Self {
+    fn new(value: &T) -> Owned<Self> {
+        Owned::new(Node {
             value: value.clone(),
-            next: AtomicPtr::new(ptr::null_mut()),
+            next: Atomic::null(),
             marked: AtomicBool::new(false),
             version: AtomicUsize::new(0),
-        });
-        Some(Box::into_raw(node))
+        })
     }
 }
 
-impl<T: Ord + Clone> LockFreeList<T> {
-    /// Creates a new lock-free list.
+pub struct LockFreeList<T> {
+    head: Atomic<Node<T>>,
+}
+
+// Important: Remove additional trait bounds from Drop
+impl<T> LockFreeList<T> {
     pub fn new() -> Self {
         Self {
-            head: AtomicPtr::new(ptr::null_mut()),
+            head: Atomic::null(),
         }
     }
+}
 
-    /// Inserts a new value into the list. Returns `true` if the value was inserted,
-    /// `false` if it already exists or allocation failed.
-    pub fn insert(&self, value: T) -> bool {
-        let Some(new_node) = Node::new(&value) else {
-            return false; // Handle allocation failure
-        };
-
+impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
+    fn find<'g>(&'g self, value: &T, guard: &'g Guard) -> (Shared<'g, Node<T>>, Shared<'g, Node<T>>) {
         loop {
-            let (prev, curr) = self.find(&value);
+            let mut prev = self.head.load(Ordering::Acquire, guard);
+            let mut curr = prev;
 
-            unsafe {
-                if !curr.is_null() && (*curr).value == value {
-                    // Node already exists
-                    drop(Box::from_raw(new_node)); // Prevent memory leak
-                    return false;
-                }
+            while let Some(curr_ref) = unsafe { curr.as_ref() } {
+                let next = curr_ref.next.load(Ordering::Acquire, guard);
 
-                // Set the next pointer of the new node
-                (*new_node).next.store(curr, Ordering::Relaxed);
-
-                // Attempt to insert the new node
-                let result = if prev.is_null() {
-                    self.head.compare_exchange(
-                        curr,
-                        new_node,
-                        Ordering::SeqCst,
-                        Ordering::Relaxed,
-                    )
-                } else {
-                    (*prev).next.compare_exchange(
-                        curr,
-                        new_node,
-                        Ordering::SeqCst,
-                        Ordering::Relaxed,
-                    )
-                };
-
-                if result.is_ok() {
-                    // Insert successful
-                    fence(Ordering::SeqCst);
-                    return true;
-                }
-
-                // Retry on failure
-            }
-        }
-    }
-
-    /// Removes a value from the list. Returns `true` if the value was removed,
-    /// `false` if it was not found.
-    pub fn remove(&self, value: &T) -> bool {
-        loop {
-            let (prev, curr) = self.find(value);
-
-            unsafe {
-                if curr.is_null() || (*curr).value != *value {
-                    // Node not found
-                    return false;
-                }
-
-                let next = (*curr).next.load(Ordering::Acquire);
-
-                // Mark the node as logically deleted
-                if (*curr).marked.compare_exchange(
-                    false,
-                    true,
-                    Ordering::SeqCst,
-                    Ordering::Relaxed,
-                ).is_err() {
-                    continue; // Retry if another thread marked it
-                }
-
-                // Increment version for ABA prevention
-                (*curr).version.fetch_add(1, Ordering::SeqCst);
-
-                // Attempt physical removal
-                let result = if prev.is_null() {
-                    self.head.compare_exchange(
-                        curr,
-                        next,
-                        Ordering::SeqCst,
-                        Ordering::Relaxed,
-                    )
-                } else {
-                    (*prev).next.compare_exchange(
-                        curr,
-                        next,
-                        Ordering::SeqCst,
-                        Ordering::Relaxed,
-                    )
-                };
-
-                if result.is_ok() {
-                    drop(Box::from_raw(curr));
-                }
-
-                return true;
-            }
-        }
-    }
-
-    fn find(&self, value: &T) -> (*mut Node<T>, *mut Node<T>) {
-        let mut prev: *mut Node<T> = ptr::null_mut();
-        let mut curr = self.head.load(Ordering::Acquire);
-
-        unsafe {
-            while !curr.is_null() {
-                let next = (*curr).next.load(Ordering::Acquire);
-
-                if (*curr).marked.load(Ordering::Acquire) {
-                    // Attempt physical removal
-                    let result = if prev.is_null() {
+                if curr_ref.marked.load(Ordering::Acquire) {
+                    let res = if prev == curr {
+                        // removing the head
                         self.head.compare_exchange(
                             curr,
                             next,
                             Ordering::SeqCst,
                             Ordering::Relaxed,
+                            guard,
                         )
                     } else {
-                        (*prev).next.compare_exchange(
+                        // removing a middle node
+                        let prev_ref = unsafe { prev.as_ref().unwrap() };
+                        prev_ref.next.compare_exchange(
                             curr,
                             next,
                             Ordering::SeqCst,
                             Ordering::Relaxed,
+                            guard,
                         )
                     };
 
-                    if result.is_ok() {
-                        // Increment version for ABA prevention
-                        (*curr).version.fetch_add(1, Ordering::SeqCst);
-                        drop(Box::from_raw(curr)); // Deallocate safely
+                    if res.is_ok() {
+                        let raw_ptr = curr.as_raw() as *mut Node<T>;
+                        let owned = unsafe { Owned::from_raw(raw_ptr) };
+                        guard.defer(move || drop(owned));
                         curr = next;
                         continue;
                     } else {
-                        // Retry find on failure
-                        return self.find(value);
+                        break;
                     }
                 }
 
-                if (*curr).value >= *value {
-                    break;
+                if curr_ref.value >= *value {
+                    return (prev, curr);
                 }
 
                 prev = curr;
                 curr = next;
             }
-        }
 
-        (prev, curr)
+            return (prev, Shared::null());
+        }
+    }
+    pub fn insert(&self, value: T) -> bool {
+        let guard = &epoch::pin();
+        let mut new_node = Node::new(&value);
+
+        loop {
+            let (prev, curr) = self.find(&value, guard);
+
+            unsafe {
+                if !curr.is_null() {
+                    let curr_ref = curr.as_ref().unwrap();
+                    if curr_ref.value == value && !curr_ref.marked.load(Ordering::Acquire) {
+                        return false; // Already in the list
+                    }
+                }
+
+                new_node.next.store(curr, Ordering::Relaxed);
+                let new_shared = new_node.into_shared(guard);
+
+                let res = if prev.is_null() {
+                    self.head.compare_exchange(
+                        curr,
+                        new_shared,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                        guard,
+                    )
+                } else {
+                    let prev_ref: &Node<T> = prev.as_ref().unwrap();
+                    prev_ref.next.compare_exchange(
+                        curr,
+                        new_shared,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                        guard,
+                    )
+                };
+
+                match res {
+                    Ok(_) => return true,
+                    Err(_err) => {
+                        new_node = Node::new(&value);
+                    }
+                }
+            }
+        }
     }
 
-    /// Checks if a value exists in the list
+    pub fn remove(&self, value: &T) -> bool {
+        let guard = &epoch::pin();
+        loop {
+            let (prev, curr) = self.find(value, guard);
+    
+            if curr.is_null() {
+                return false;
+            }
+    
+            unsafe {
+                let curr_ref = curr.as_ref().unwrap();
+                if curr_ref.value != *value || curr_ref.marked.load(Ordering::Acquire) {
+                    return false;
+                }
+    
+                let next = curr_ref.next.load(Ordering::Acquire, guard);
+    
+                // Attempt to mark the node
+                if curr_ref.marked.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed).is_err() {
+                    continue; // Another thread marked it; retry
+                }
+    
+                curr_ref.version.fetch_add(1, Ordering::SeqCst);
+    
+                // Attempt to physically remove the node
+                let res = if prev.is_null() {
+                    self.head.compare_exchange(
+                        curr,
+                        next,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                        guard,
+                    )
+                } else {
+                    let prev_ref: &Node<T> = prev.as_ref().unwrap();
+                    prev_ref.next.compare_exchange(
+                        curr,
+                        next,
+                        Ordering::SeqCst,
+                        Ordering::Relaxed,
+                        guard,
+                    )
+                };
+    
+                // If physical removal succeeded, defer its destruction
+                if res.is_ok() {
+                    guard.defer_destroy(curr);
+                }
+    
+                return true;
+            }
+        }
+    }
+
     pub fn contains(&self, value: &T) -> bool {
-        let (_, curr) = self.find(value);
+        let guard = &epoch::pin();
+        let (_, curr) = self.find(value, guard);
         unsafe {
-            !curr.is_null() && 
-            !(*curr).marked.load(Ordering::Acquire) && 
-            (*curr).value == *value
+            if curr.is_null() {
+                false
+            } else {
+                let curr_ref = curr.as_ref().unwrap();
+                !curr_ref.marked.load(Ordering::Acquire) && curr_ref.value == *value
+            }
         }
     }
 }
 
+// Drop implementation without additional trait bounds
 impl<T> Drop for LockFreeList<T> {
     fn drop(&mut self) {
+        let guard = &epoch::pin();
         unsafe {
-            let mut current = self.head.load(Ordering::Relaxed);
-            while !current.is_null() {
-                let next = (*current).next.load(Ordering::Relaxed);
-                drop(Box::from_raw(current));
+            let mut current = self.head.swap(Shared::null(), Ordering::Relaxed, guard);
+            while let Some(_curr_ref) = current.as_ref() {
+                let next = _curr_ref.next.load(Ordering::Relaxed, guard);
+                // Schedule the node for reclamation instead of manually dropping
+                guard.defer_destroy(current);
                 current = next;
             }
         }
     }
 }
 
-// Example test module
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_basic_operations() {
-        let list = LockFreeList::new();
+        let list = LockFreeList::<i32>::new();
         assert!(list.insert(1));
         assert!(list.insert(2));
         assert!(list.contains(&1));

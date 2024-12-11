@@ -13,6 +13,7 @@ rust-version = "1.72.0"
 [dependencies]
 libc = { version = "0.2", optional = true }
 crossbeam = "0.8"
+crossbeam-epoch = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_System_Threading"], optional = true }
@@ -25,7 +26,7 @@ fast-barrier = ["windows-sys", "libc"]
 
 [dev-dependencies]
 criterion = "0.3.5"
-crossbeam-epoch = "0.9.8"
+crossbeam-epoch = "0.9.18"
 haphazard = { git = "https://github.com/jonhoo/haphazard", rev = "e0e18f60f78652a63aba235be854f87d106c1a1b" }
 
 [lints.rust]
@@ -44,5 +45,10 @@ name = "lockfree_list_test"
 harness = false
 
 [[bench]]
+name = "thread_list_test"
+harness = false
+
+[[bench]]
 name = "lockfree_hash_test"
 harness = false
+
