@@ -50,7 +50,12 @@ impl<T> AtomicQueue<T> {
         loop {
             let head = self.head.load(Ordering::Acquire);
             let tail = self.tail.load(Ordering::Acquire);
-            let head_next = unsafe { (*head).next.load(Ordering::Acquire) };
+            let head_next = unsafe {
+                if head.is_null() {
+                    return None;
+                }
+                (*head).next.load(Ordering::Acquire)
+            };
     
             if head == tail {
                 if head_next.is_null() {
@@ -58,14 +63,19 @@ impl<T> AtomicQueue<T> {
                 }
                 self.tail.compare_exchange(tail, head_next, Ordering::Release, Ordering::Relaxed).ok();
             } else if !head_next.is_null() {
-                let value = unsafe { (*head_next).value.take() };
+                let value = unsafe {
+                    (*head_next).value.take()
+                };
                 if self.head.compare_exchange(head, head_next, Ordering::Release, Ordering::Relaxed).is_ok() {
-                    unsafe { drop(Box::from_raw(head)) };
+                    unsafe {
+                        drop(Box::from_raw(head));
+                    }
                     return value;
                 }
             }
-        }    
+        }
     }
+    
 }
 
 impl<T> Drop for AtomicQueue<T> {

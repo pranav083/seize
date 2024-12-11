@@ -11,8 +11,8 @@ use sysinfo::{System, SystemExt};
 use std::fs::File;
 use std::io::{Write, BufWriter};
 
-fn benchmark_lockfree_queue(c: &mut Criterion) {
-    let mut group = c.benchmark_group("lockfree_queue_memory");
+fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Lock-Free Queue Memory");
     let mut sys = System::new_all();
 
     // Open a CSV file for logging memory usage
@@ -27,7 +27,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
     .expect("Unable to write to file");
 
     // Reference Counting
-    group.bench_function("lock_free_queue_enqueue_ref_counting", |b| {
+    group.bench_function("Enqueue Memory (Reference Counting)", |b| {
         let queue = Arc::new(LockFreeQueue::new());
         b.iter(|| {
             sys.refresh_memory();
@@ -46,7 +46,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("lock_free_queue_dequeue_ref_counting", |b| {
+    group.bench_function("Dequeue Memory (Reference Counting)", |b| {
         let queue = Arc::new(LockFreeQueue::new());
         queue.enqueue(1);
         b.iter(|| {
@@ -67,7 +67,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
     });
 
     // Seize
-    group.bench_function("lock_free_queue_enqueue_seize", |b| {
+    group.bench_function("Enqueue Memory (Seize)", |b| {
         let collector = Collector::new();
         let queue = LockFreeQueue::new();
         b.iter(|| {
@@ -88,7 +88,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("lock_free_queue_dequeue_seize", |b| {
+    group.bench_function("Dequeue Memory (Seize)", |b| {
         let collector = Collector::new();
         let queue = LockFreeQueue::new();
         queue.enqueue(1);
@@ -111,7 +111,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
     });
 
     // Crossbeam Epoch
-    group.bench_function("lock_free_queue_enqueue_crossbeam", |b| {
+    group.bench_function("Enqueue Memory (Crossbeam Epoch)", |b| {
         let queue = LockFreeQueue::new();
         b.iter(|| {
             sys.refresh_memory();
@@ -131,7 +131,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("lock_free_queue_dequeue_crossbeam", |b| {
+    group.bench_function("Dequeue Memory (Crossbeam Epoch)", |b| {
         let queue = LockFreeQueue::new();
         queue.enqueue(1);
         b.iter(|| {
@@ -153,7 +153,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
     });
 
     // Hazard Pointer
-    group.bench_function("lock_free_queue_enqueue_hazard_pointer", |b| {
+    group.bench_function("Enqueue Memory (Hazard Pointer)", |b| {
         let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
         let queue = LockFreeQueue::new();
         let mut hazard_pointer = HazardPointer::new();
@@ -177,7 +177,7 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("lock_free_queue_dequeue_hazard_pointer", |b| {
+    group.bench_function("Dequeue Memory (Hazard Pointer)", |b| {
         let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
         let queue = LockFreeQueue::new();
         let mut hazard_pointer = HazardPointer::new();
@@ -206,8 +206,8 @@ fn benchmark_lockfree_queue(c: &mut Criterion) {
     writer.flush().expect("Failed to flush memory usage data");
 }
 
-fn benchmark_atomic_queue(c: &mut Criterion) {
-    let mut group = c.benchmark_group("atomic_queue_memory");
+fn benchmark_atomic_queue_memory(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Atomic Queue Memory");
     let mut sys = System::new_all();
 
     let file = File::create("atomic_queue_memory_usage.csv").expect("Unable to create file");
@@ -220,7 +220,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
     .expect("Unable to write to file");
 
     // Reference Counting
-    group.bench_function("atomic_queue_enqueue_ref_counting", |b| {
+    group.bench_function("Enqueue Memory (Reference Pointing)", |b| {
         let queue = Arc::new(AtomicQueue::new());
         b.iter(|| {
             sys.refresh_memory();
@@ -239,7 +239,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("atomic_queue_dequeue_ref_counting", |b| {
+    group.bench_function("Dequeue Memory (Reference Pointing)", |b| {
         let queue = Arc::new(AtomicQueue::new());
         queue.enqueue(1);
         b.iter(|| {
@@ -260,7 +260,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
     });
 
     // Seize
-    group.bench_function("atomic_queue_enqueue_seize", |b| {
+    group.bench_function("Enqueue Memory (Seize)", |b| {
         let collector = Collector::new();
         let queue = AtomicQueue::new();
         b.iter(|| {
@@ -281,7 +281,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("atomic_queue_dequeue_seize", |b| {
+    group.bench_function("Dequeue Memory (Seize)", |b| {
         let collector = Collector::new();
         let queue = AtomicQueue::new();
         queue.enqueue(1);
@@ -304,7 +304,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
     });
 
     // Crossbeam
-    group.bench_function("atomic_queue_enqueue_crossbeam", |b| {
+    group.bench_function("Enqueue Memory (Crossbeam Epoch)", |b| {
         let queue = AtomicQueue::new();
         b.iter(|| {
             sys.refresh_memory();
@@ -324,7 +324,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("atomic_queue_dequeue_crossbeam", |b| {
+    group.bench_function("Dequeue Memory (Crossbeam Epoch)", |b| {
         let queue = AtomicQueue::new();
         queue.enqueue(1);
         b.iter(|| {
@@ -346,7 +346,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
     });
 
     // Hazard Pointer
-    group.bench_function("atomic_queue_enqueue_hazard_pointers", |b| {
+    group.bench_function("Enqueue Memory (Hazard Pointer)", |b| {
         let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
         let queue = AtomicQueue::new();
         let mut hazard_pointer = HazardPointer::new();
@@ -370,7 +370,7 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("atomic_queue_dequeue_hazard_pointers", |b| {
+    group.bench_function("Dequeue Memory (Hazard Pointer)", |b| {
         let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
         let queue = AtomicQueue::new();
         let mut hazard_pointer = HazardPointer::new();
@@ -400,5 +400,5 @@ fn benchmark_atomic_queue(c: &mut Criterion) {
     writer.flush().expect("Failed to flush memory usage data");
 }
 
-criterion_group!(benches, benchmark_lockfree_queue, benchmark_atomic_queue);
+criterion_group!(benches, benchmark_lockfree_queue_memory, benchmark_atomic_queue_memory);
 criterion_main!(benches);
