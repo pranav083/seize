@@ -19,3 +19,4 @@ pub use guard::{unprotected, Guard, LocalGuard, OwnedGuard, UnprotectedGuard};
 
 pub mod structures;
 pub use structures::*;
+pub use structures::lock_free_queue::LockFreeQueue;

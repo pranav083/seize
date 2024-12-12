@@ -43,25 +43,17 @@ name = "single_thread"
 harness = false
 
 [[bench]]
-name = "lockfree_list_test"
-harness = false
-
-[[bench]]
-name = "thread_list_test"
-harness = false
-
-[[bench]]
-name = "lockfree_hash_test"
-harness = false
-
-[[bench]]
-name = "thread_hash_test"
-harness = false
-
-[[bench]]
 name = "thread_link_hash_test"
 harness = false
 
 [[bench]]
 name = "memory_link_hash_test"
+harness = false
+
+[[bench]]
+name = "memory_bench"
+harness = false
+
+[[bench]]
+name = "threads_bench"
 harness = false
