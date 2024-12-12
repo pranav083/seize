@@ -55,5 +55,21 @@ name = "memory_bench"
 harness = false
 
 [[bench]]
+name = "normal_bench_lock_free_queue_enqueue"
+harness = false
+
+[[bench]]
+name = "normal_bench_lock_free_queue_dequeue"
+harness = false
+
+[[bench]]
+name = "normal_bench_atomic_queue_enqueue"
+harness = false
+
+[[bench]]
+name = "normal_bench_atomic_queue_dequeue"
+harness = false
+
+[[bench]]
 name = "threads_bench"
 harness = false
