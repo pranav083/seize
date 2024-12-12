@@ -10,7 +10,7 @@ use haphazard::{Domain, HazardPointer};
 use std::sync::atomic::AtomicPtr;
 
 fn bench_atomic_queue_multi_threaded(c: &mut Criterion) {
-    let mut group = c.benchmark_group("AtomicQueue Multi-threaded");
+    let mut group = c.benchmark_group("Atomic Queue Multi-threaded");
     group.sample_size(10);
 
     // Reference Counting
@@ -100,7 +100,7 @@ fn bench_atomic_queue_multi_threaded(c: &mut Criterion) {
         );
     }
 
-    for &threads in &[2, 4, 6, 6, 8] {
+    for &threads in &[2, 4, 6, 8] {
         group.bench_with_input(
             BenchmarkId::new("Dequeue Multi-threaded (Seize)", threads),
             &threads,
@@ -256,7 +256,7 @@ fn bench_atomic_queue_multi_threaded(c: &mut Criterion) {
 }
 
 fn bench_lock_free_queue_multi_threaded(c: &mut Criterion) {
-    let mut group = c.benchmark_group("LockFreeQueue Multi-threaded");
+    let mut group = c.benchmark_group("Lock-Free Queue Multi-threaded");
     group.sample_size(10);
 
     // Reference Counting
