@@ -55,47 +55,40 @@ fn bench_lock_free_list_insert(c: &mut Criterion) {
 // Multi-threaded Remove Performance
 fn bench_lock_free_list_remove(c: &mut Criterion) {
     let mut group = c.benchmark_group("LockFreeList Multi-threaded Remove");
-
     for &threads in &[2, 4, 6, 8] {
-        group.bench_with_input(
-            BenchmarkId::new("Remove", threads),
-            &threads,
-            |b, &threads| {
-                b.iter(|| {
-                    let list = Arc::new(LockFreeList::new());
+        group.bench_with_input(BenchmarkId::new("Remove", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::new());
 
-                    // Pre-fill the list
-                    for i in 0..(threads * ITEMS) {
-                        list.insert(i);
-                    }
+                // Pre-fill the list
+                for i in 0..(threads * ITEMS) {
+                    list.insert(i);
+                }
 
-                    let barrier = Arc::new(Barrier::new(threads + 1));
-                    let handles: Vec<_> = (0..threads)
-                        .map(|_| {
-                            let list = Arc::clone(&list);
-                            let barrier = Arc::clone(&barrier);
-                            thread::spawn(move || {
-                                barrier.wait();
-                                for i in 0..ITEMS {
-                                    list.remove(&black_box(i));
-                                }
-                            })
+                let barrier = Arc::new(Barrier::new(threads + 1));
+                let handles: Vec<_> = (0..threads)
+                    .map(|_| {
+                        let list = Arc::clone(&list);
+                        let barrier = Arc::clone(&barrier);
+                        thread::spawn(move || {
+                            barrier.wait();
+                            for i in 0..ITEMS {
+                                list.remove(&black_box(i));
+                            }
                         })
-                        .collect();
+                    })
+                    .collect();
 
-                    barrier.wait();
+                barrier.wait();
 
-                    for handle in handles {
-                        handle.join().unwrap();
-                    }
-                });
-            },
-        );
+                for handle in handles {
+                    handle.join().unwrap();
+                }
+            });
+        });
     }
-
     group.finish();
 }
-
 // Reference Counting Overhead (No barrier needed here)
 fn bench_lock_free_list_reference_counting(c: &mut Criterion) {
     let mut group = c.benchmark_group("LockFreeList Reference Counting");
@@ -289,12 +282,12 @@ fn bench_lock_free_list_find_and_contains(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    // bench_lock_free_list_insert,
+    bench_lock_free_list_insert,
     bench_lock_free_list_remove,
-    // bench_lock_free_list_reference_counting,
-    // bench_lock_free_list_seize,
-    // bench_lock_free_list_crossbeam_epoch,
-    // bench_lock_free_list_hazard_pointer,
-    // bench_lock_free_list_find_and_contains,
+    bench_lock_free_list_reference_counting,
+    bench_lock_free_list_seize,
+    bench_lock_free_list_crossbeam_epoch,
+    bench_lock_free_list_hazard_pointer,
+    bench_lock_free_list_find_and_contains,
 );
 criterion_main!(benches);
