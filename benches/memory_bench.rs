@@ -13,7 +13,7 @@ use std::io::{Write, BufWriter};
 use std::time::Duration;
 
 
-const BATCH_SIZE: usize = 100;
+const BATCH_SIZE: usize = 10000;
 const MAX_OPERATIONS: usize = 100_000;
 
 fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
@@ -38,10 +38,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     total_operations += 1;
@@ -49,18 +48,18 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
 
             writeln!(
                 writer,
-                "lockfree_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
+                "lockfree_queue,no scheme,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -74,28 +73,27 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.dequeue());
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
-            sys.refresh_memory();
+           sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
 
             writeln!(
                 writer,
-                "lockfree_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
+                "lockfree_queue,no scheme,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -107,18 +105,15 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -127,8 +122,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -142,18 +138,15 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.dequeue());
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -162,8 +155,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -176,18 +170,15 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -196,8 +187,10 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,seize,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -212,10 +205,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = collector.enter();
 
                 for _ in 0..BATCH_SIZE {
@@ -224,8 +216,6 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-            
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -234,8 +224,10 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,seize,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -247,10 +239,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = epoch::pin();
                 
                 for _ in 0..BATCH_SIZE {
@@ -259,8 +250,6 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -270,7 +259,11 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 "lockfree_queue,crossbeam,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+
+
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -284,10 +277,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = epoch::pin();
 
                 for _ in 0..BATCH_SIZE {
@@ -296,7 +288,6 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -305,8 +296,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,crossbeam,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -320,10 +312,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     unsafe {
                         let _protected = hazard_pointer.protect(&atomic_ptr);
@@ -333,9 +324,7 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-            
-            sys.refresh_memory();
+                sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
 
@@ -345,6 +334,8 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 memory_before, memory_after, memory_change
             )
             .expect("Unable to write to file");
+            }
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -360,10 +351,9 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     unsafe {
                         let _protected = hazard_pointer.protect(&atomic_ptr);
@@ -373,7 +363,7 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
+        
             sys.refresh_memory();
             let memory_before = sys.available_memory();
             
@@ -387,6 +377,7 @@ fn benchmark_lockfree_queue_memory(c: &mut Criterion) {
                 memory_before, memory_after, memory_change
             )
             .expect("Unable to write to file");
+        }
         Duration::from_secs_f64(0.1)
         });
     });
@@ -415,28 +406,27 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
 
             writeln!(
                 writer,
-                "lockfree_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
+                "lockfree_queue,no scheme,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -450,28 +440,27 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.dequeue());
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
-            sys.refresh_memory();
+           sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
 
             writeln!(
                 writer,
-                "lockfree_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
+                "lockfree_queue,no scheme,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -483,18 +472,15 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -503,8 +489,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,ref_counting,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -518,18 +505,15 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.dequeue());
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -538,8 +522,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,ref_counting,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -552,18 +537,15 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 for _ in 0..BATCH_SIZE {
                     black_box(queue.enqueue(1));
                     if total_operations >= MAX_OPERATIONS {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -573,7 +555,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 "lockfree_queue,seize,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -588,10 +572,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = collector.enter();
 
                 for _ in 0..BATCH_SIZE {
@@ -600,8 +583,6 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-            
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -611,7 +592,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 "lockfree_queue,seize,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -623,10 +606,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = epoch::pin();
                 
                 for _ in 0..BATCH_SIZE {
@@ -635,8 +617,6 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
-
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -646,7 +626,11 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 "lockfree_queue,crossbeam,enqueue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
             )
-            .expect("Unable to write to file");
+.expect("Unable to write to file");
+}
+
+
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -660,10 +644,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
             let mut total_operations = 0;
             let total_batches = (iters as usize) / BATCH_SIZE;
 
-            sys.refresh_memory();
-            let memory_before = sys.available_memory();
-
             for _ in 0..total_batches {
+                sys.refresh_memory();
+                let memory_before = sys.available_memory();
                 let _guard = epoch::pin();
                 
                 for _ in 0..BATCH_SIZE {
@@ -672,7 +655,6 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                         break;
                     }
                 }
-            }
             sys.refresh_memory();
             let memory_after = sys.available_memory();
             let memory_change = memory_after as i64 - memory_before as i64;
@@ -681,8 +663,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                 writer,
                 "lockfree_queue,crossbeam,dequeue,{} KB,{} KB,{} KB",
                 memory_before, memory_after, memory_change
-            )
-            .expect("Unable to write to file");
+            ).expect("Unable to write to file");
+}
+            
         Duration::from_secs_f64(0.1)
         });
     });
@@ -709,8 +692,6 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                             break;
                         }
                     }
-                }
-                
                 sys.refresh_memory();
                 let memory_after = sys.available_memory();
                 let memory_change = memory_after as i64 - memory_before as i64;
@@ -719,8 +700,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                     writer,
                     "lockfree_queue,hazard_pointer,enqueue,{} KB,{} KB,{} KB",
                     memory_before, memory_after, memory_change
-                )
-                .expect("Unable to write to file");
+                ).expect("Unable to write to file");
+}
+                
         Duration::from_secs_f64(0.1)
             });
         });
@@ -749,9 +731,6 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                             break;
                         }
                     }
-                }
-                sys.refresh_memory();
-                let memory_before = sys.available_memory();
                 
                 sys.refresh_memory();
                 let memory_after = sys.available_memory();
@@ -761,8 +740,9 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
                     writer,
                     "lockfree_queue,hazard_pointer,dequeue,{} KB,{} KB,{} KB",
                     memory_before, memory_after, memory_change
-                )
-                .expect("Unable to write to file");
+                ).expect("Unable to write to file");
+            }
+                
         Duration::from_secs_f64(0.1)
             });
         });
@@ -771,5 +751,11 @@ fn benchmark_atomic_queue_memory(c: &mut Criterion) {
     writer.flush().expect("Failed to flush memory usage data");
 }
 
-criterion_group!(benches, benchmark_lockfree_queue_memory, benchmark_atomic_queue_memory);
+fn criterion_config() -> Criterion {
+    Criterion::default()
+        .warm_up_time(std::time::Duration::from_secs(1))    // Shorten warm-up phase
+        .measurement_time(std::time::Duration::from_secs(2)) // Shorten measurement phase
+}
+
+criterion_group!(name = benches; config = criterion_config(); targets = benchmark_lockfree_queue_memory, benchmark_atomic_queue_memory);
 criterion_main!(benches);

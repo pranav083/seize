@@ -14,7 +14,7 @@ const ITEMS: usize = 200;
 fn bench_atomic_enqueue_multi_threaded(c: &mut Criterion) {
     let mut group = c.benchmark_group("Atomic Enqueue Multi-threaded");
 
-    let thread_counts = [2, 4, 8, 16, 32];
+    let thread_counts = [4, 8, 16, 32, 64];
     for &threads in &thread_counts {
         // No Scheme
         group.bench_with_input(
@@ -141,7 +141,7 @@ fn bench_atomic_enqueue_multi_threaded(c: &mut Criterion) {
 fn bench_atomic_dequeue_multi_threaded(c: &mut Criterion) {
     let mut group = c.benchmark_group("Atomic Dequeue Multi-threaded");
 
-    let thread_counts = [2, 4, 8, 16, 32];
+    let thread_counts = [4, 8, 16, 32, 64];
     for &threads in &thread_counts {
         // No Scheme
         group.bench_with_input(
@@ -281,7 +281,7 @@ fn bench_atomic_dequeue_multi_threaded(c: &mut Criterion) {
 fn bench_lock_free_enqueue_multi_threaded(c: &mut Criterion) {
     let mut group = c.benchmark_group("Lock-Free Enqueue Multi-threaded");
     
-    for &threads in &[2, 4, 8, 16, 32] {
+    for &threads in &[4, 8, 16, 32, 64] {
         // No Scheme
         group.bench_with_input(
             BenchmarkId::new("Enqueue Multi-threaded (No Scheme)", threads),
@@ -372,33 +372,33 @@ fn bench_lock_free_enqueue_multi_threaded(c: &mut Criterion) {
             },
         );
 
-        Hazard Pointer
-        group.bench_with_input(
-            BenchmarkId::new("Enqueue Multi-threaded (Hazard Pointer)", threads),
-            &threads,
-            |b, &threads| {
-                let _domain = Domain::global();
-                let queue = Arc::new(LockFreeQueue::new());
-                b.iter(|| {
-                    let mut handles = vec![];
-                    let queue_clone = Arc::clone(&queue);
-                    handles.push(thread::spawn(move || {
-                        let mut hazard_pointer = HazardPointer::new();
-                        let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(0)));
-                        for i in 0..ITEMS {
-                            let value = black_box(i);
-                            unsafe {
-                                let _protected = hazard_pointer.protect(&atomic_ptr);
-                                queue_clone.enqueue(value);
-                            }
-                        }
-                    }));
-                    for handle in handles {
-                        handle.join().unwrap();
-                    }
-                });
-            },
-        );
+        // Hazard Pointer
+        // group.bench_with_input(
+        //     BenchmarkId::new("Enqueue Multi-threaded (Hazard Pointer)", threads),
+        //     &threads,
+        //     |b, &threads| {
+        //         let _domain = Domain::global();
+        //         let queue = Arc::new(LockFreeQueue::new());
+        //         b.iter(|| {
+        //             let mut handles = vec![];
+        //             let queue_clone = Arc::clone(&queue);
+        //             handles.push(thread::spawn(move || {
+        //                 let mut hazard_pointer = HazardPointer::new();
+        //                 let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(0)));
+        //                 for i in 0..ITEMS {
+        //                     let value = black_box(i);
+        //                     unsafe {
+        //                         let _protected = hazard_pointer.protect(&atomic_ptr);
+        //                         queue_clone.enqueue(value);
+        //                     }
+        //                 }
+        //             }));
+        //             for handle in handles {
+        //                 handle.join().unwrap();
+        //             }
+        //         });
+        //     },
+        // );
     }
 
     group.finish();
@@ -407,7 +407,7 @@ fn bench_lock_free_enqueue_multi_threaded(c: &mut Criterion) {
 fn bench_lock_free_dequeue_multi_threaded(c: &mut Criterion) {
     let mut group = c.benchmark_group("Lock-Free Dequeue Multi-threaded");
     
-    for &threads in &[2, 4, 8, 16, 32] {
+    for &threads in &[4, 8, 16, 32, 64] {
         // No Scheme
         group.bench_with_input(
             BenchmarkId::new("Dequeue Multi-threaded (No Scheme)", threads),
@@ -509,37 +509,37 @@ fn bench_lock_free_dequeue_multi_threaded(c: &mut Criterion) {
             },
         );
 
-        Hazard Pointer
-        group.bench_with_input(
-            BenchmarkId::new("Dequeue Multi-threaded (Hazard Pointer)", threads),
-            &threads,
-            |b, &threads| {
-                let _domain = Domain::global();
-                let queue = Arc::new(LockFreeQueue::new());
-                for i in 0..ITEMS {
-                    queue.enqueue(i);
-                }
-                b.iter(|| {
-                    let mut handles = vec![];
-                    for t in 0..threads {
-                        let queue_clone = Arc::clone(&queue);
-                        handles.push(thread::spawn(move || {
-                            let mut hazard_pointer = HazardPointer::new();
-                            let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
-                            for _ in 0..ITEMS {
-                                unsafe {
-                                    let _protected = hazard_pointer.protect(&atomic_ptr);
-                                    queue_clone.dequeue();
-                                }
-                            }
-                        }));
-                    }
-                    for handle in handles {
-                        handle.join().unwrap();
-                    }
-                });
-            },
-        );
+        // Hazard Pointer
+        // group.bench_with_input(
+        //     BenchmarkId::new("Dequeue Multi-threaded (Hazard Pointer)", threads),
+        //     &threads,
+        //     |b, &threads| {
+        //         let _domain = Domain::global();
+        //         let queue = Arc::new(LockFreeQueue::new());
+        //         for i in 0..ITEMS {
+        //             queue.enqueue(i);
+        //         }
+        //         b.iter(|| {
+        //             let mut handles = vec![];
+        //             for t in 0..threads {
+        //                 let queue_clone = Arc::clone(&queue);
+        //                 handles.push(thread::spawn(move || {
+        //                     let mut hazard_pointer = HazardPointer::new();
+        //                     let atomic_ptr = AtomicPtr::new(Box::into_raw(Box::new(1)));
+        //                     for _ in 0..ITEMS {
+        //                         unsafe {
+        //                             let _protected = hazard_pointer.protect(&atomic_ptr);
+        //                             queue_clone.dequeue();
+        //                         }
+        //                     }
+        //                 }));
+        //             }
+        //             for handle in handles {
+        //                 handle.join().unwrap();
+        //             }
+        //         });
+        //     },
+        // );
     }
 
     group.finish();

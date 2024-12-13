@@ -4,7 +4,7 @@ import numpy as np
 
 # Load the data from CSV
 # Replace 'atomic_queue_memory_usage.csv' with the actual path to your CSV file
-data = pd.read_csv('lockfree_list_memory_usage.csv')
+data = pd.read_csv('lockfree_queue_memory_usage.csv')
 
 # Rename columns for easier handling if necessary
 data.rename(columns={
