@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
-use crate::structures::mcs_lock::{MCSLock, MCSNode};
+use crate::structures::mcs_lock::{MCSLock, MCSNode, OperationSource};
 
 /// Node structure for the linked list.
 pub struct Node<T> {
@@ -60,22 +60,23 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
     /// Returns `true` if the insertion was successful,
     /// or `false` if the value already exists.
     pub fn insert(&self, value: T) -> bool {
-        let mut node = MCSNode::new(); // Now accessible
-        self.lock.lock(&mut node);
+        let mut node = MCSNode::new();
+        // Acquire lock with OperationSource::LinkedList
+        self.lock.lock(&mut node, OperationSource::LinkedList);
 
         unsafe {
             let (prev, curr) = self.find(&value);
 
             if !curr.is_null() && (*curr).value == value {
                 // Value already exists
-                self.lock.unlock(&mut node);
+                self.lock.unlock(&mut node, OperationSource::LinkedList);
                 return false;
             }
 
             let new_node = Node::new(value);
             if prev.is_null() {
                 // Insert at the head
-                (*new_node).next.store(curr, Ordering::Relaxed);
+                (*new_node).next.store(self.head.load(Ordering::Acquire), Ordering::Relaxed);
                 self.head.store(new_node, Ordering::Release);
             } else {
                 // Insert between prev and curr
@@ -83,7 +84,8 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
                 (*prev).next.store(new_node, Ordering::Release);
             }
 
-            self.lock.unlock(&mut node);
+            // Release lock with OperationSource::LinkedList
+            self.lock.unlock(&mut node, OperationSource::LinkedList);
             true
         }
     }
@@ -93,14 +95,15 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
     /// or `false` if the value was not found.
     pub fn remove(&self, value: &T) -> bool {
         let mut node = MCSNode::new();
-        self.lock.lock(&mut node);
+        // Acquire lock with OperationSource::LinkedList
+        self.lock.lock(&mut node, OperationSource::LinkedList);
 
         unsafe {
             let (prev, curr) = self.find(value);
 
             if curr.is_null() || (*curr).value != *value {
                 // Value not found
-                self.lock.unlock(&mut node);
+                self.lock.unlock(&mut node, OperationSource::LinkedList);
                 return false;
             }
 
@@ -116,7 +119,8 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
             // Deallocate the removed node
             Box::from_raw(curr);
 
-            self.lock.unlock(&mut node);
+            // Release lock with OperationSource::LinkedList
+            self.lock.unlock(&mut node, OperationSource::LinkedList);
             true
         }
     }
@@ -125,7 +129,8 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
     /// Returns `true` if the value is present, or `false` otherwise.
     pub fn contains(&self, value: &T) -> bool {
         let mut node = MCSNode::new();
-        self.lock.lock(&mut node);
+        // Acquire lock with OperationSource::LinkedList
+        self.lock.lock(&mut node, OperationSource::LinkedList);
 
         let mut found = false;
         unsafe {
@@ -141,7 +146,8 @@ impl<T: Ord + Clone + Send + Sync + 'static> LockFreeList<T> {
             }
         }
 
-        self.lock.unlock(&mut node);
+        // Release lock with OperationSource::LinkedList
+        self.lock.unlock(&mut node, OperationSource::LinkedList);
         found
     }
 }

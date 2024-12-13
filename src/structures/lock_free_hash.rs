@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
 use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
-use crate::structures::mcs_lock::{MCSLock, MCSNode};
+use crate::structures::mcs_lock::{MCSLock, MCSNode, OperationSource};
 use std::mem::MaybeUninit;
 
 /// Number of buckets in the hash map. Adjust based on expected concurrency.
@@ -94,17 +94,20 @@ where
         unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
         let mut mcs_node = unsafe { mcs_node.assume_init() };
 
-        // Acquire lock
-        self.buckets[index].0.lock(&mut mcs_node);
+        // Acquire lock with OperationSource::HashMap
+        self.buckets[index].0.lock(&mut mcs_node, OperationSource::HashMap);
 
         // Insert at the head of the linked list
         unsafe {
-            (*node).next.store(self.buckets[index].1.load(Ordering::Acquire), Ordering::Relaxed);
+            (*node).next.store(
+                self.buckets[index].1.load(Ordering::Acquire),
+                Ordering::Relaxed,
+            );
             self.buckets[index].1.store(node, Ordering::Release);
         }
 
-        // Release lock
-        self.buckets[index].0.unlock(&mut mcs_node);
+        // Release lock with OperationSource::HashMap
+        self.buckets[index].0.unlock(&mut mcs_node, OperationSource::HashMap);
     }
 
     /// Retrieves a cloned value corresponding to the key.
@@ -122,8 +125,8 @@ where
         unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
         let mut mcs_node = unsafe { mcs_node.assume_init() };
 
-        // Acquire lock
-        self.buckets[index].0.lock(&mut mcs_node);
+        // Acquire lock with OperationSource::HashMap
+        self.buckets[index].0.lock(&mut mcs_node, OperationSource::HashMap);
 
         // Traverse the linked list
         let mut current = self.buckets[index].1.load(Ordering::Acquire);
@@ -137,8 +140,8 @@ where
             }
         }
 
-        // Release lock
-        self.buckets[index].0.unlock(&mut mcs_node);
+        // Release lock with OperationSource::HashMap
+        self.buckets[index].0.unlock(&mut mcs_node, OperationSource::HashMap);
 
         result
     }
@@ -158,8 +161,8 @@ where
         unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
         let mut mcs_node = unsafe { mcs_node.assume_init() };
 
-        // Acquire lock
-        self.buckets[index].0.lock(&mut mcs_node);
+        // Acquire lock with OperationSource::HashMap
+        self.buckets[index].0.lock(&mut mcs_node, OperationSource::HashMap);
 
         let mut prev_ptr = &self.buckets[index].1;
         let mut current = self.buckets[index].1.load(Ordering::Acquire);
@@ -180,8 +183,8 @@ where
             }
         }
 
-        // Release lock
-        self.buckets[index].0.unlock(&mut mcs_node);
+        // Release lock with OperationSource::HashMap
+        self.buckets[index].0.unlock(&mut mcs_node, OperationSource::HashMap);
 
         removed_value
     }
@@ -199,7 +202,6 @@ where
             while !current.is_null() {
                 unsafe {
                     let next = (*current).next.load(Ordering::Relaxed);
-                    // Reconstruct the Box to deallocate
                     Box::from_raw(current);
                     current = next;
                 }
