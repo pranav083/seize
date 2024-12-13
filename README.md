@@ -1,51 +1,32 @@
-# `seize`
+Benchmarking Concurrent Data Structures and Memory Reclamation Schemes
 
-[<img alt="crates.io" src="https://img.shields.io/crates/v/seize?style=for-the-badge" height="25">](https://crates.io/crates/seize)
-[<img alt="github" src="https://img.shields.io/badge/github-seize-blue?style=for-the-badge" height="25">](https://github.com/ibraheemdev/seize)
-[<img alt="docs.rs" src="https://img.shields.io/docsrs/seize?style=for-the-badge" height="25">](https://docs.rs/seize)
+This project benchmarks the performance of concurrent data structures using various memory reclamation schemes. It evaluates key metrics such as latency, throughput, scalability, and memory usage to analyze the trade-offs between different approaches to memory reclamation.
+Overview
 
-Fast, efficient, and robust memory reclamation for concurrent data structures.
+The primary goal of this project is to benchmark the following data structures under various memory reclamation schemes:
 
-See the [quick-start guide] to get started.
+Lock-Free Queue
+Atomic Queue
+Hashmap
+Linked List
 
-## Background
+Each data structure was tested for common operations (e.g., enqueue, dequeue, insertion, deletion, lookup) under different memory reclamation schemes, specifically:
 
-Concurrent data structures are faced with the problem of deciding when it is
-safe to free memory. Although an object might have been logically removed, other
-threads that previously loaded it may still be accessing it, and thus it is
-not safe to free immediately. Over the years, many algorithms have been devised
-to solve this problem. However, most traditional memory reclamation schemes make
-the tradeoff between performance, efficiency, and robustness. For example,
-[epoch based reclamation] is fast and lightweight but lacks robustness in that a
-stalled thread can prevent the reclamation of _all_ retired objects. [Hazard
-pointers], another popular scheme, tracks individual pointers, making it efficient
-and robust but generally much slower.
+Reference Counting (via Rust's Arc)
+Hazard Pointers (via the haphazard crate)
+Epoch-Based Reclamation (via crossbeam_epoch)
+Seize (via the seize crate)
 
-Another problem that is often not considered is workload balancing. In most
-reclamation schemes, the thread that retires an object is the one that reclaims
-it. This leads to unbalanced reclamation in read-dominated workloads; parallelism
-is reduced when only a fraction of threads are writing, degrading memory efficiency.
+The benchmarks measure:
 
-## Implementation
+Latency: The time taken to complete individual operations.
+Throughput: The total number of operations completed in a fixed period.
+Scalability: Performance trends as thread counts increase.
+Free Memory Usage: Changes in memory usage during operations to evaluate reclamation efficiency.
 
-Seize is based on the [hyaline reclamation scheme], which uses reference counting
-to determine when it is safe to free memory. However, reference counters are only
-used for already retired objects, allowing it to avoid the high overhead incurred
-by traditional reference counting schemes where every memory access requires modifying
-shared memory. Reclamation is naturally balanced as the thread with the last reference
-to an object is the one that frees it. This removes the need to check whether other
-threads have made progress, leading to predictable latency without sacrificing performance.
-Epochs can also be tracked to protect against stalled threads, making reclamation truly
-lock-free.
+Features
 
-Seize provides performance competitive with that of epoch based schemes, while memory efficiency
-is similar to that of hazard pointers. Seize is compatible with all modern hardware that
-supports single-word atomic operations such as FAA and CAS.
-
-[quick-start guide]: https://docs.rs/seize/latest/seize/guide/index.html
-[tokio]: https://github.com/tokio-rs/tokio
-[hazard pointers]:
-  https://www.cs.otago.ac.nz/cosc440/readings/hazard-pointers.pdf
-[hyaline reclamation scheme]: https://arxiv.org/pdf/1905.07903.pdf
-[epoch based reclamation]:
-  https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-579.pdf
+Single-Threaded and Multi-Threaded Benchmarks: Analyze performance across varying levels of concurrency.
+Custom Graph Generation: Automatically generates graphs to visualize benchmark results.
+Comprehensive Metrics: Tracks memory usage, operation latency, and scalability for each combination of data structure and memory reclamation scheme.
+Support for Rust's Ownership Model: Leverages Rust's safety features for concurrent programming to ensure thread safety and memory safety.
