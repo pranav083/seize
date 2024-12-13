@@ -51,9 +51,9 @@ name = "memory_link_hash_test"
 harness = false
 
 [[bench]]
-name = "memory_bench"
+name = "queue_memory_bench"
 harness = false
 
 [[bench]]
-name = "threads_bench"
+name = "queue_threads_bench"
 harness = false
