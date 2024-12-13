@@ -1,58 +1,81 @@
+// src/structures/lock_free_hash.rs
+
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
-use std::hash::{Hash, Hasher};
+use std::borrow::Borrow;
 use std::collections::hash_map::RandomState;
-use std::sync::Arc;
-use std::hash::BuildHasher;
+use crate::structures::mcs_lock::{MCSLock, MCSNode};
+use std::mem::MaybeUninit;
 
+/// Number of buckets in the hash map. Adjust based on expected concurrency.
+const NUM_BUCKETS: usize = 256;
 
-/// The maximum number of buckets in the hash map.
-const NUM_BUCKETS: usize = 64;
-
-/// A node in the linked list for handling collisions.
-struct Node<K, V> {
+/// Node representing a key-value pair in the hash map.
+struct HashNode<K, V> {
     key: K,
     value: V,
-    next: AtomicPtr<Node<K, V>>,
+    next: AtomicPtr<HashNode<K, V>>,
 }
 
-impl<K, V> Node<K, V> {
-    fn new(key: K, value: V) -> *mut Self {
-        Box::into_raw(Box::new(Node {
+impl<K, V> HashNode<K, V> {
+    fn new(key: K, value: V) -> Box<Self> {
+        Box::new(HashNode {
             key,
             value,
             next: AtomicPtr::new(ptr::null_mut()),
-        }))
+        })
     }
 }
 
-/// A lock-free hash map.
-pub struct LockFreeHashMap<K, V> {
-    buckets: Vec<AtomicPtr<Node<K, V>>>,
-    hash_builder: RandomState,
-}
-
-impl<K, V> LockFreeHashMap<K, V>
+/// Concurrent Hash Map using MCS Lock for each bucket.
+pub struct LockFreeHashMap<K, V, S = RandomState>
 where
     K: Eq + Hash,
-    V: Clone, // Added Clone bound here
+    V: Clone,
+    S: BuildHasher,
+{
+    buckets: Vec<(MCSLock, AtomicPtr<HashNode<K, V>>)>,
+    hash_builder: S,
+}
+
+impl<K, V> LockFreeHashMap<K, V, RandomState>
+where
+    K: Eq + Hash,
+    V: Clone,
 {
     /// Creates a new, empty `LockFreeHashMap`.
     pub fn new() -> Self {
+        let hash_builder = RandomState::new();
+        Self::with_hasher(hash_builder)
+    }
+}
+
+impl<K, V, S> LockFreeHashMap<K, V, S>
+where
+    K: Eq + Hash,
+    V: Clone,
+    S: BuildHasher,
+{
+    /// Creates a new, empty `LockFreeHashMap` with a specified hasher.
+    pub fn with_hasher(hash_builder: S) -> Self {
         let mut buckets = Vec::with_capacity(NUM_BUCKETS);
         for _ in 0..NUM_BUCKETS {
-            buckets.push(AtomicPtr::new(ptr::null_mut()));
+            buckets.push((
+                MCSLock::new(),
+                AtomicPtr::new(ptr::null_mut()), // Head of the linked list
+            ));
         }
         LockFreeHashMap {
             buckets,
-            hash_builder: RandomState::new(),
+            hash_builder,
         }
     }
 
     /// Computes the hash of a key and maps it to a bucket index.
     fn bucket_index<Q: ?Sized>(&self, key: &Q) -> usize
     where
-        K: std::borrow::Borrow<Q>,
+        K: Borrow<Q>,
         Q: Hash + Eq,
     {
         let mut hasher = self.hash_builder.build_hasher();
@@ -60,106 +83,124 @@ where
         (hasher.finish() as usize) % NUM_BUCKETS
     }
 
-    /// Inserts a key-value pair into the hash map.
+    /// Inserts a key-value pair into the MCS hash map.
     pub fn insert(&self, key: K, value: V) {
         let index = self.bucket_index(&key);
-        let new_node = Node::new(key, value);
+        let node = Box::into_raw(HashNode::new(key, value));
 
-        let bucket = &self.buckets[index];
-        loop {
-            let head = bucket.load(Ordering::Acquire);
-            unsafe {
-                (*new_node).next.store(head, Ordering::Relaxed);
-            }
-            if bucket
-                .compare_exchange(head, new_node, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok()
-            {
-                break;
-            }
+        // Initialize MCS node for locking
+        let mut mcs_node = MaybeUninit::<MCSNode>::uninit();
+        let mcs_node_ptr = mcs_node.as_mut_ptr();
+        unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
+        let mut mcs_node = unsafe { mcs_node.assume_init() };
+
+        // Acquire lock
+        self.buckets[index].0.lock(&mut mcs_node);
+
+        // Insert at the head of the linked list
+        unsafe {
+            (*node).next.store(self.buckets[index].1.load(Ordering::Acquire), Ordering::Relaxed);
+            self.buckets[index].1.store(node, Ordering::Release);
         }
+
+        // Release lock
+        self.buckets[index].0.unlock(&mut mcs_node);
     }
 
-    /// Retrieves a reference to the value corresponding to the key.
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<Arc<V>>
+    /// Retrieves a cloned value corresponding to the key.
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<V>
     where
-        K: std::borrow::Borrow<Q>,
+        K: Borrow<Q>,
         Q: Hash + Eq,
     {
         let index = self.bucket_index(key);
-        let mut current = self.buckets[index].load(Ordering::Acquire);
+        let mut result = None;
 
+        // Initialize MCS node for locking
+        let mut mcs_node = MaybeUninit::<MCSNode>::uninit();
+        let mcs_node_ptr = mcs_node.as_mut_ptr();
+        unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
+        let mut mcs_node = unsafe { mcs_node.assume_init() };
+
+        // Acquire lock
+        self.buckets[index].0.lock(&mut mcs_node);
+
+        // Traverse the linked list
+        let mut current = self.buckets[index].1.load(Ordering::Acquire);
         while !current.is_null() {
             unsafe {
                 if (*current).key.borrow() == key {
-                    return Some(Arc::new((*current).value.clone())); // Clone now works
+                    result = Some((*current).value.clone());
+                    break;
                 }
                 current = (*current).next.load(Ordering::Acquire);
             }
         }
-        None
-    }
-    
 
-   /// Removes a key-value pair from the hash map.
+        // Release lock
+        self.buckets[index].0.unlock(&mut mcs_node);
+
+        result
+    }
+
+    /// Removes a key-value pair from the MCS hash map.
     pub fn remove<Q: ?Sized>(&self, key: &Q) -> Option<V>
     where
-        K: std::borrow::Borrow<Q>,
+        K: Borrow<Q>,
         Q: Hash + Eq,
     {
         let index = self.bucket_index(key);
-        let bucket = &self.buckets[index];
+        let mut removed_value = None;
 
-        let mut prev = bucket.load(Ordering::Acquire);
-        let mut current = prev;
+        // Initialize MCS node for locking
+        let mut mcs_node = MaybeUninit::<MCSNode>::uninit();
+        let mcs_node_ptr = mcs_node.as_mut_ptr();
+        unsafe { ptr::write(mcs_node_ptr, MCSNode::new()) };
+        let mut mcs_node = unsafe { mcs_node.assume_init() };
+
+        // Acquire lock
+        self.buckets[index].0.lock(&mut mcs_node);
+
+        let mut prev_ptr = &self.buckets[index].1;
+        let mut current = self.buckets[index].1.load(Ordering::Acquire);
 
         while !current.is_null() {
             unsafe {
-                let next = (*current).next.load(Ordering::Acquire);
                 if (*current).key.borrow() == key {
-                    let value = ptr::read(&(*current).value); // Take ownership of the value
-
-                    if prev == current {
-                        // Node is at the head of the list
-                        if bucket
-                            .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                        {
-                            drop(Box::from_raw(current)); // Free the memory
-                            return Some(value);
-                        }
-                    } else {
-                        // Node is in the middle or end of the list
-                        let prev_node = &(*prev).next;
-                        if prev_node
-                            .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                        {
-                            drop(Box::from_raw(current)); // Free the memory
-                            return Some(value);
-                        }
-                    }
+                    // Remove the node
+                    let next = (*current).next.load(Ordering::Acquire);
+                    (*prev_ptr).store(next, Ordering::Release);
+                    removed_value = Some((*current).value.clone());
+                    // Deallocate the node
+                    Box::from_raw(current);
+                    break;
                 }
-
-                // Move to the next node
-                prev = current;
-                current = next;
+                prev_ptr = &(*current).next;
+                current = (*current).next.load(Ordering::Acquire);
             }
         }
-        None
+
+        // Release lock
+        self.buckets[index].0.unlock(&mut mcs_node);
+
+        removed_value
     }
 }
 
-
-
-impl<K, V> Drop for LockFreeHashMap<K, V> {
+impl<K, V, S> Drop for LockFreeHashMap<K, V, S>
+where
+    K: Eq + Hash,
+    V: Clone,
+    S: BuildHasher,
+{
     fn drop(&mut self) {
-        for bucket in &self.buckets {
-            let mut current = bucket.load(Ordering::Acquire);
+        for (_, bucket) in &self.buckets {
+            let mut current = bucket.load(Ordering::Relaxed);
             while !current.is_null() {
                 unsafe {
-                    let next = (*current).next.load(Ordering::Acquire);
-                    drop(Box::from_raw(current)); // Explicitly drop the box
+                    let next = (*current).next.load(Ordering::Relaxed);
+                    // Reconstruct the Box to deallocate
+                    Box::from_raw(current);
                     current = next;
                 }
             }

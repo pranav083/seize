@@ -57,3 +57,11 @@ harness = false
 [[bench]]
 name = "queue_threads_bench"
 harness = false
+
+[[bench]]
+name = "thread_link_test"
+harness = false
+
+[[bench]]
+name = "thread_heap_test"
+harness = false

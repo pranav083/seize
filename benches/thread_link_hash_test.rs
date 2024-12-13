@@ -654,6 +654,127 @@ fn bench_lock_free_hash_map_contains(c: &mut Criterion) {
     group.finish();
 }
 
+// ============================== bench_lock_free_list_operations_all ==============================
+
+
+fn bench_lock_free_list_operations_all(c: &mut Criterion) {
+    let mut group = c.benchmark_group("LockFreeList Operations Comparison");
+
+    for &threads in &[2, 4, 6, 8] {
+        // Insert operation
+        group.bench_with_input(BenchmarkId::new("Insert", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::<usize>::new());
+                run_list_operation(&list, threads, |list, i| {
+                    list.insert(black_box(i));
+                });
+            });
+        });
+
+        // Contains operation
+        group.bench_with_input(BenchmarkId::new("Contains", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::<usize>::new());
+                for i in 0..(ITEMS) {
+                    list.insert(i);
+                }
+                run_list_operation(&list, threads, |list, i| {
+                    black_box(list.contains(&i));
+                });
+            });
+        });
+
+        // Remove operation
+        group.bench_with_input(BenchmarkId::new("Remove", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::<usize>::new());
+                for i in 0..(ITEMS) {
+                    list.insert(i);
+                }
+                run_list_operation(&list, threads, |list, i| {
+                    black_box(list.remove(&i));
+                });
+            });
+        });
+
+        // Mixed workload
+        group.bench_with_input(BenchmarkId::new("Mixed", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::<usize>::new());
+                let half = threads / 2;
+                run_mixed_workload_list(&list, threads, half);
+            });
+        });
+
+        // Find operation
+        group.bench_with_input(BenchmarkId::new("Find", threads), &threads, |b, &threads| {
+            b.iter(|| {
+                let list = Arc::new(LockFreeList::<usize>::new());
+                for i in 0..(ITEMS) {
+                    list.insert(i);
+                }
+                run_list_operation(&list, threads, |list, i| {
+                    assert!(list.contains(&black_box(i)));
+                });
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// Helper function to run list operations
+fn run_list_operation<F>(list: &Arc<LockFreeList<usize>>, threads: usize, operation: F)
+where
+    F: Fn(&LockFreeList<usize>, usize) + Send + Sync + 'static + Clone,
+{
+    let barrier = Arc::new(Barrier::new(threads + 1));
+    let handles: Vec<_> = (0..threads)
+        .map(|_| {
+            let list = Arc::clone(list);
+            let barrier = Arc::clone(&barrier);
+            let operation = operation.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                for i in 0..ITEMS {
+                    operation(&list, i);
+                }
+            })
+        })
+        .collect();
+
+    barrier.wait();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+
+fn run_mixed_workload_list(list: &Arc<LockFreeList<usize>>, threads: usize, half: usize) {
+    let barrier = Arc::new(Barrier::new(threads + 1));
+    let handles: Vec<_> = (0..threads)
+        .map(|i| {
+            let list = Arc::clone(list);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                if i < half {
+                    for i in 0..ITEMS {
+                        list.insert(i);
+                    }
+                } else {
+                    for i in 0..ITEMS {
+                        let _ = list.contains(&i);
+                    }
+                }
+            })
+        })
+        .collect();
+
+    barrier.wait();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
 
 
 
@@ -662,16 +783,17 @@ fn bench_lock_free_hash_map_contains(c: &mut Criterion) {
 criterion_group!(
     benches,
     // LockFreeList benchmarks
-    bench_lock_free_list_insert,
-    bench_lock_free_list_contains,
-    bench_lock_free_list_mixed,
+    // bench_lock_free_list_operations_all,
+    // bench_lock_free_list_insert,
+    // bench_lock_free_list_contains,
+    // bench_lock_free_list_mixed,
 
 
-    // LockFreeHashMap benchmarks
+    // // LockFreeHashMap benchmarks
     bench_lock_free_hash_map_insert,
-    bench_lock_free_hash_map_contains,
+    // bench_lock_free_hash_map_contains,
     bench_lock_free_hash_map_remove,
-    bench_lock_free_hash_map_mixed
+    // bench_lock_free_hash_map_mixed
 );
 
 
